@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: sap-o2c-api
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/o2c.sqlite3
+      - key: DATA_DIR
+        value: /var/data/sap-o2c-data
+      - key: FRONTEND_ORIGIN
+        value: https://sap-o2c-dashboard.onrender.com
+    disk:
+      name: o2c-data
+      mountPath: /var/data
+      sizeGB: 2
+  - type: web
+    name: sap-o2c-dashboard
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://sap-o2c-api.onrender.com
