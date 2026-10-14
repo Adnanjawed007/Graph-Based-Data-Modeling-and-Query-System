@@ -9,9 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from .common import connect, DB_PATH, REPORT, item_id, table_files
 from .ingest import ingest
-from .llm import plan_question
+from .llm import plan_question, generate_answer
 from .schemas import (HealthResponse, QueryValidationResponse, QueryResponse, DatasetStatsResponse,
                       GraphResponse, EntitySearchResponse, TopProductsResponse, QualityReportResponse)
+from .narration import narrate_answer
 import networkx as nx
 
 app=FastAPI(title='SAP Order-to-Cash Context Graph',version='0.1.0',description='Read-only investigation API over the supplied SAP-style JSONL records.')
@@ -367,6 +368,12 @@ def query_response(answer,plan,evidence=None,warning=None,clarification=False,op
       'billing_summary':['billing_document_headers','billing_document_items'],
       'incomplete_flows':['sales_order_headers','outbound_delivery_items','billing_document_headers','billing_document_items']}[intent]
     ev=evidence or {}; results=ev.get('results')
+    answer=narrate_answer(answer,plan,ev)
+    if evidence and os.environ.get('LLM_PROVIDER') and os.environ.get('LLM_API_KEY') and os.environ.get('LLM_MODEL'):
+        try:
+            answer=generate_answer(plan,ev,answer)
+        except Exception:
+            warning=warning or 'LLM answer generation failed; showing a grounded summary instead.'
     count=ev.get('count',len(results) if isinstance(results,list) else len(ev.get('nodes',[])))
     if intent=='incomplete_flows': count=sum(ev.get('counts',{}).values())
     refs=ev.get('referenced_node_ids') or [n.get('id') for n in ev.get('nodes',[]) if n.get('id')]
