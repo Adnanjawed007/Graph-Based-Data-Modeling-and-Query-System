@@ -48,7 +48,7 @@ export default function App(){
     if(!host.current)return;let cancelled=false;cy.current?.destroy();
     const draw=async()=>{
       const {default:cytoscape}=await import('cytoscape');if(cancelled||!host.current)return;
-      const elements=[...graph.nodes.map(n=>({data:{id:n.id,label:n.type.replaceAll('_',' ')+'\n'+n.identifier,type:n.type,node:n,highlighted:highlighted.includes(n.id)}})),...graph.edges.map((e,i)=>({data:{id:e.id||'e'+i,source:e.source,target:e.target,label:e.type,highlighted:focusedGraph}}))];
+      const elements=[...graph.nodes.map(n=>({data:{id:n.id,label:n.type.replace(/_/g,' ')+'\n'+n.identifier,type:n.type,node:n,highlighted:highlighted.includes(n.id)}})),...graph.edges.map((e,i)=>({data:{id:e.id||'e'+i,source:e.source,target:e.target,label:e.type,highlighted:focusedGraph}}))];
       cy.current=cytoscape({container:host.current,elements,style:[
         {selector:'node',style:{'background-color':'#3d7791','label':'data(label)','color':'#172b35','font-size':'9px','text-wrap':'wrap','text-max-width':'100px','width':'34px','height':'34px','border-width':'1px','border-color':'#fff'}},
         {selector:'node[type = "customer"], node[type = "product"], node[type = "plant"], node[type = "partner_address"]',style:{'background-color':'#35a184'}},
@@ -57,7 +57,7 @@ export default function App(){
         {selector:'node[highlighted]',style:{'background-color':'#e59b36','border-width':'3px','border-color':'#9a5c00','width':'42px','height':'42px'}},
         {selector:'edge',style:{'line-color':'#a8bbc2','target-arrow-color':'#a8bbc2','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','width':'1px','opacity':0.42}},
         {selector:'edge[highlighted]',style:{'line-color':'#1985d0','target-arrow-color':'#1985d0','width':'3px','opacity':1,'font-size':'8px','color':'#245575','text-background-color':'#fff','text-background-opacity':0.85,'text-background-padding':'2px'}}
-      ],layout:focusedGraph&&focusRoot?{name:'breadthfirst',directed:false,roots:`[id = "${focusRoot}"]`,padding:45,spacingFactor:1.15,animate:false}:{name:'cose',animate:false,fit:true,padding:35}});
+      ],layout:focusedGraph&&focusRoot?{name:'breadthfirst',directed:false,roots:[`[id = "${focusRoot}"]`],padding:45,spacingFactor:1.15,animate:false}:{name:'cose',animate:false,fit:true,padding:35}});
       cy.current.on('tap','node',e=>setSelection(e.target.data('node')));
     };void draw();return()=>{cancelled=true;cy.current?.destroy()}
   },[graph,highlighted,focusedGraph,focusRoot]);
@@ -69,8 +69,8 @@ export default function App(){
   return <main>
     <header><div><small>BUSINESS INVESTIGATION</small><h1>Order-to-Cash Context Graph</h1><p>Explore verified links across the supplied SAP records.</p></div><button onClick={load}>Refresh data</button></header>
     {err&&<div className="error">{err}</div>}
-    <section className="stats">{(stats?.tables||[]).map((t:any)=><div key={t.table_name}><b>{Number(t.records).toLocaleString()}</b><span>{t.table_name.replaceAll('_',' ')}</span></div>)}</section>
-    <section className="searchbar"><form onSubmit={searchEntities}><input aria-label="Search entities" value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Find an order, customer, product, or document"/><button>Search</button></form><div className="search-results">{searchResults.map(n=><button type="button" key={n.id} onClick={()=>chooseEntity(n)}>{n.type} ? {n.identifier}</button>)}</div></section>
+    <section className="stats">{(stats?.tables||[]).map((t:any)=><div key={t.table_name}><b>{Number(t.records).toLocaleString()}</b><span>{String(t.table_name).replace(/_/g,' ')}</span></div>)}</section>
+    <section className="searchbar"><form onSubmit={searchEntities}><input aria-label="Search entities" value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Find an order, customer, product, or document"/><button>Search</button></form><div className="search-results">{searchResults.map(n=><button type="button" key={n.id} onClick={()=>chooseEntity(n)}>{n.type} - {n.identifier}</button>)}</div></section>
     <section className="workspace">
       <div className="graph"><div className="bar"><b>Relationship graph</b><select aria-label="Filter relationship type" value={relationshipFilter} onChange={e=>setRelationshipFilter(e.target.value)}><option value="">All relationship types</option><option>CONTAINS_ITEM</option><option>REFERENCES_ORDER_ITEM</option><option>REFERENCES_PRECEDING_ITEM</option><option>HAS_PRODUCT</option><option>BELONGS_TO_CUSTOMER</option><option>ACCOUNTED_BY</option><option>CLEARED_BY</option><option>HAS_STORAGE_ASSIGNMENT</option></select><span>{graph.total_nodes||0} entities / {graph.total_edges||0} links{focusedGraph?' - focused trace':' (bounded view)'}</span></div>
         {trail.length>0&&<div className="trace-strip"><span className="trace-caption">Document trail</span><div className="trace-steps">{trail.map((step,index)=><span className="trace-step" key={`${step.kind}-${step.id}`}><b>{trailLabels[step.kind]}</b><strong>{step.id}</strong>{index<trail.length-1&&<i>-&gt;</i>}</span>)}</div></div>}
