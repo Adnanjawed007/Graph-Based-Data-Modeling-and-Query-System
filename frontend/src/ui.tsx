@@ -6,6 +6,8 @@ type Edge={id?:string,source:string,target:string,type:string};
 type Payload={nodes:Node[],edges:Edge[],total_nodes?:number,total_edges?:number};
 type ChatMessage={role:'assistant'|'user',content:string,resultCount?:number,status?:string,warnings?:string[],options?:string[],plan?:unknown,evidence?:unknown};
 const API=import.meta.env.VITE_API_URL||'';
+const nodeNames:Record<string,string>={sales_order:'Order',sales_order_item:'Order item',delivery:'Delivery',delivery_item:'Delivery item',billing_document:'Billing',billing_item:'Billing item',journal_entry:'Journal',journal_entry_item:'Journal item',schedule_line:'Schedule',customer:'Customer',product:'Product',plant:'Plant'};
+function graphNodeLabel(n:Node){const parts=n.identifier.split(':');const id=parts[parts.length-1]||n.identifier;const compact=id.length>12?'...'+id.slice(-8):id;return `${nodeNames[n.type]||n.type.replace(/_/g,' ')}\n${compact}`}
 
 function richText(text:string){
   return text.split(/(\*\*.*?\*\*|\n)/g).map((part,index)=>part==='\n'?<br key={index}/>:part.startsWith('**')&&part.endsWith('**')?<strong key={index}>{part.slice(2,-2)}</strong>:part);
@@ -33,7 +35,7 @@ export default function App(){
       const ev=j.evidence;
       if(ev?.nodes){
         const nodes:Node[]=ev.nodes;const edges:Edge[]=ev.edges||[];
-        setGraph({nodes,edges,total_nodes:nodes.length,total_edges:edges.length});setHighlighted(j.referenced_node_ids||nodes.map(n=>n.id));setFocusRoot(ev.root||null);setFocusedGraph(true);
+        setGraph({nodes,edges,total_nodes:nodes.length,total_edges:edges.length});setHighlighted(ev.root?[ev.root]:(j.referenced_node_ids||nodes.map(n=>n.id)));setFocusRoot(ev.root||null);setFocusedGraph(true);
         if(ev.root){const rootNode=nodes.find(n=>n.id===ev.root);if(rootNode)setSelection(rootNode)}
       }
     }catch(x:any){setMessages(old=>[...old,{role:'assistant',content:`I could not complete that query: ${x.message}`}])}
@@ -48,7 +50,7 @@ export default function App(){
     if(!host.current)return;let cancelled=false;cy.current?.destroy();
     const draw=async()=>{
       const {default:cytoscape}=await import('cytoscape');if(cancelled||!host.current)return;
-      const elements=[...graph.nodes.map(n=>({data:{id:n.id,label:n.type.replace(/_/g,' ')+'\n'+n.identifier,type:n.type,node:n,highlighted:highlighted.includes(n.id)}})),...graph.edges.map((e,i)=>({data:{id:e.id||'e'+i,source:e.source,target:e.target,label:e.type,highlighted:focusedGraph}}))];
+      const elements=[...graph.nodes.map(n=>({data:{id:n.id,label:graphNodeLabel(n),type:n.type,node:n,highlighted:highlighted.includes(n.id)}})),...graph.edges.map((e,i)=>({data:{id:e.id||'e'+i,source:e.source,target:e.target,label:focusedGraph?'':e.type,highlighted:focusedGraph}}))];
       cy.current=cytoscape({container:host.current,elements,style:[
         {selector:'node',style:{'background-color':'#3d7791','label':'data(label)','color':'#172b35','font-size':'9px','text-wrap':'wrap','text-max-width':'100px','width':'34px','height':'34px','border-width':'1px','border-color':'#fff'}},
         {selector:'node[type = "customer"], node[type = "product"], node[type = "plant"], node[type = "partner_address"]',style:{'background-color':'#35a184'}},
@@ -57,7 +59,7 @@ export default function App(){
         {selector:'node[highlighted]',style:{'background-color':'#e59b36','border-width':'3px','border-color':'#9a5c00','width':'42px','height':'42px'}},
         {selector:'edge',style:{'line-color':'#a8bbc2','target-arrow-color':'#a8bbc2','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','width':'1px','opacity':0.42}},
         {selector:'edge[highlighted]',style:{'line-color':'#1985d0','target-arrow-color':'#1985d0','width':'3px','opacity':1,'font-size':'8px','color':'#245575','text-background-color':'#fff','text-background-opacity':0.85,'text-background-padding':'2px'}}
-      ],layout:focusedGraph&&focusRoot?{name:'breadthfirst',directed:false,roots:[`[id = "${focusRoot}"]`],padding:45,spacingFactor:1.15,animate:false}:{name:'cose',animate:false,fit:true,padding:35}});
+      ],layout:focusedGraph?{name:'cose',animate:false,fit:true,padding:55,nodeRepulsion:6500,idealEdgeLength:95,gravity:0.2,numIter:1000}:{name:'cose',animate:false,fit:true,padding:35}});
       cy.current.on('tap','node',e=>setSelection(e.target.data('node')));
     };void draw();return()=>{cancelled=true;cy.current?.destroy()}
   },[graph,highlighted,focusedGraph,focusRoot]);
