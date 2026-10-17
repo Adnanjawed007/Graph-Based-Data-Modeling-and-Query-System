@@ -5,9 +5,12 @@ type Node={id:string,type:string,identifier:string,data:Record<string,unknown>};
 type Edge={id?:string,source:string,target:string,type:string};
 type Payload={nodes:Node[],edges:Edge[],total_nodes?:number,total_edges?:number};
 type ChatMessage={role:'assistant'|'user',content:string,resultCount?:number,status?:string,warnings?:string[],options?:string[],plan?:unknown,evidence?:unknown};
+type HoveredNode={node:Node,x:number,y:number};
 const API=import.meta.env.VITE_API_URL||'';
 const nodeNames:Record<string,string>={sales_order:'Order',sales_order_item:'Order item',delivery:'Delivery',delivery_item:'Delivery item',billing_document:'Billing',billing_item:'Billing item',journal_entry:'Journal',journal_entry_item:'Journal item',schedule_line:'Schedule',customer:'Customer',product:'Product',plant:'Plant'};
 function graphNodeLabel(n:Node){const parts=n.identifier.split(':');const id=parts[parts.length-1]||n.identifier;const compact=id.length>12?'...'+id.slice(-8):id;return `${nodeNames[n.type]||n.type.replace(/_/g,' ')}\n${compact}`}
+function propertyLabel(key:string){return key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/^./,s=>s.toUpperCase())}
+function propertyText(value:unknown){if(value===null||value===undefined||value==='')return '—';if(typeof value==='object')return JSON.stringify(value);return String(value)}
 
 function richText(text:string){
   return text.split(/(\*\*.*?\*\*|\n)/g).map((part,index)=>part==='\n'?<br key={index}/>:part.startsWith('**')&&part.endsWith('**')?<strong key={index}>{part.slice(2,-2)}</strong>:part);
@@ -16,6 +19,7 @@ function richText(text:string){
 export default function App(){
   const host=useRef<HTMLDivElement>(null), cy=useRef<Core|null>(null), chatEnd=useRef<HTMLDivElement>(null);
   const [graph,setGraph]=useState<Payload>({nodes:[],edges:[]}),[stats,setStats]=useState<any>(null),[selection,setSelection]=useState<Node|null>(null);
+  const [hovered,setHovered]=useState<HoveredNode|null>(null);
   const [question,setQuestion]=useState(''),[messages,setMessages]=useState<ChatMessage[]>([{role:'assistant',content:'Hi! Ask me about an order, delivery, billing document, customer, or the order-to-cash flow.'}]);
   const [loading,setLoading]=useState(false),[highlighted,setHighlighted]=useState<string[]>([]),[focusedGraph,setFocusedGraph]=useState(false),[focusRoot,setFocusRoot]=useState<string|null>(null);
   const [searchText,setSearchText]=useState(''),[searchResults,setSearchResults]=useState<Node[]>([]),[relationshipFilter,setRelationshipFilter]=useState(''),[err,setErr]=useState('');
@@ -61,6 +65,8 @@ export default function App(){
         {selector:'edge[highlighted]',style:{'line-color':'#1985d0','target-arrow-color':'#1985d0','width':'3px','opacity':1,'font-size':'8px','color':'#245575','text-background-color':'#fff','text-background-opacity':0.85,'text-background-padding':'2px'}}
       ],layout:focusedGraph?{name:'cose',animate:false,fit:true,padding:55,nodeRepulsion:6500,idealEdgeLength:95,gravity:0.2,numIter:1000}:{name:'cose',animate:false,fit:true,padding:35}});
       cy.current.on('tap','node',e=>setSelection(e.target.data('node')));
+      const showHover=(e:any)=>{const rect=host.current?.getBoundingClientRect(),frame=host.current?.parentElement?.getBoundingClientRect();if(!rect||!frame)return;const width=Math.min(320,frame.width-24),height=Math.min(320,frame.height-24);const x=rect.left-frame.left+e.renderedPosition.x+16,y=rect.top-frame.top+e.renderedPosition.y+16;setHovered({node:e.target.data('node'),x:Math.max(12,Math.min(x,frame.width-width-12)),y:Math.max(12,Math.min(y,frame.height-height-12))})};
+      cy.current.on('mouseover','node',showHover);cy.current.on('mousemove','node',showHover);cy.current.on('mouseout','node',()=>setHovered(null));
     };void draw();return()=>{cancelled=true;cy.current?.destroy()}
   },[graph,highlighted,focusedGraph,focusRoot]);
 
@@ -77,6 +83,7 @@ export default function App(){
       <div className="graph"><div className="bar"><b>Relationship graph</b><select aria-label="Filter relationship type" value={relationshipFilter} onChange={e=>setRelationshipFilter(e.target.value)}><option value="">All relationship types</option><option>CONTAINS_ITEM</option><option>REFERENCES_ORDER_ITEM</option><option>REFERENCES_PRECEDING_ITEM</option><option>HAS_PRODUCT</option><option>BELONGS_TO_CUSTOMER</option><option>ACCOUNTED_BY</option><option>CLEARED_BY</option><option>HAS_STORAGE_ASSIGNMENT</option></select><span>{graph.total_nodes||0} entities / {graph.total_edges||0} links{focusedGraph?' - focused trace':' (bounded view)'}</span></div>
         {trail.length>0&&<div className="trace-strip"><span className="trace-caption">Document trail</span><div className="trace-steps">{trail.map((step,index)=><span className="trace-step" key={`${step.kind}-${step.id}`}><b>{trailLabels[step.kind]}</b><strong>{step.id}</strong>{index<trail.length-1&&<i>-&gt;</i>}</span>)}</div></div>}
         <div className="canvas" ref={host}/>
+        {hovered&&(()=>{const fields=Object.entries(hovered.node.data||{}),connections=graph.edges.filter(e=>e.source===hovered.node.id||e.target===hovered.node.id).length;return <div className="node-tooltip" style={{left:hovered.x,top:hovered.y}}><div className="node-tooltip-title"><span className="badge">{nodeNames[hovered.node.type]||propertyLabel(hovered.node.type)}</span><strong>{hovered.node.identifier}</strong></div><div className="node-tooltip-fields">{fields.slice(0,10).map(([key,value])=><div className="node-property" key={key}><b>{propertyLabel(key)}</b><span>{propertyText(value)}</span></div>)}{fields.length>10&&<details><summary>{fields.length-10} more properties</summary>{fields.slice(10).map(([key,value])=><div className="node-property" key={key}><b>{propertyLabel(key)}</b><span>{propertyText(value)}</span></div>)}</details>}</div><small>{connections} connections · Click to pin details</small></div>})()}
       </div>
       <aside>
         <div className="panel chat-panel"><div className="chat-heading"><div><h2>Chat with your O2C graph</h2><p>Ask questions about orders, deliveries, billing, and customers.</p></div></div>
@@ -90,7 +97,7 @@ export default function App(){
           </article>)}{loading&&<article className="chat-message assistant"><div className="message-author">O2C Graph Assistant</div><div className="message-bubble typing">Checking linked records...</div></article>}<div ref={chatEnd}/></div>
           <form className="chat-composer" onSubmit={ask}><textarea aria-label="Ask the dataset" value={question} onChange={e=>setQuestion(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();e.currentTarget.form?.requestSubmit()}}} placeholder="Ask a question..."/><div><small>Press Enter to send | Shift+Enter for a new line</small><button disabled={loading||!question.trim()}>{loading?'Investigating...':'Send'}</button></div></form>
         </div>
-        <div className="panel selected-panel"><h2>Selected entity</h2>{selection?<><div className="badge">{selection.type}</div><h3>{selection.identifier}</h3><button onClick={expand}>Expand neighbors</button><pre>{JSON.stringify(selection.data,null,2)}</pre></>:<p>Select a graph node to inspect source fields.</p>}</div>
+        <div className="panel selected-panel"><h2>Selected entity</h2>{selection?<><div className="badge">{nodeNames[selection.type]||propertyLabel(selection.type)}</div><h3>{selection.identifier}</h3><button onClick={expand}>Expand neighbors</button><div className="property-list">{Object.entries(selection.data||{}).map(([key,value])=><div className="node-property" key={key}><b>{propertyLabel(key)}</b><span>{propertyText(value)}</span></div>)}</div><small>{graph.edges.filter(e=>e.source===selection.id||e.target===selection.id).length} connections in the displayed graph</small></>:<p>Hover over a node for a quick preview, or click it to pin all properties here.</p>}</div>
       </aside>
     </section>
     <footer>Answers are grounded in the supplied records. Expand a chat response to inspect its validated query plan and source evidence.</footer>
