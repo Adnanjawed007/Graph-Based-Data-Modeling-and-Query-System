@@ -1,109 +1,213 @@
-# SAP Order-to-Cash Context Graph
+﻿# SAP Order-to-Cash Context Graph
 
-A compact investigation prototype over the supplied SAP-style JSONL dataset. It preserves source identifiers as strings, stages every logical table in SQLite, profiles source quality, and projects verified order-to-cash links into a bounded NetworkX graph. A React dashboard supports graph browsing, entity inspection, neighbor expansion, query evidence, and graph highlighting.
+**Explore SAP-style order-to-cash records as a connected graph, then ask grounded questions in plain language.** The application profiles source data, stages it in SQLite, constructs verified business relationships, and serves an interactive graph and conversational query interface.
 
-## What is implemented
+[Open the live dashboard](https://sap-o2c-dashboard.onrender.com) · [Public application repository](https://github.com/Adnanjawed007/sap-order-to-cash-context-graph) · [API health](https://sap-o2c-api.onrender.com/api/health) · [Interactive API docs](https://sap-o2c-api.onrender.com/docs)
 
-- Recursive JSONL inventory and reproducible profiling (`python -m backend.profile`). The generated report covers 19 logical tables, per-table files and row counts, column names, observed JSON types, null rates, sample values, candidate keys, duplicate candidate-key counts, candidate join coverage, and cancellation counts.
-- Repeatable SQLAlchemy 2 ingestion (`python -m backend.ingest`) that creates a relational SQLite table for each logical source table. Source values stay text, nested JSON values are retained as JSON strings, and source file/line are composite provenance keys. A JSON staging table remains available to the API. Malformed JSON lines are retained in a diagnostic table rather than discarded silently.
-- NetworkX graph projection persisted as `canonical_entities` and `document_relationships`; join audits are stored in `relationship_validation_results`. FastAPI exposes dataset statistics, entity search/detail, graph retrieval/expansion/path, document traces, data-quality diagnostics, incomplete-flow rules, top products, query validation, and safe supported queries.
-- Responsive React, TypeScript, Vite, and Cytoscape dashboard.
-- Optional Gemini and Groq adapters return a strict Pydantic query plan for bounded supported intents; provider output cannot supply SQL, columns, or operators. Unsupported requests are rejected, ambiguous entity queries request clarification, and explanations are generated from retrieved records.
+> The public source repository intentionally excludes the business dataset. The dataset lives in a separate private GitHub repository and is supplied to the Render build/deployment workflow. Do not put dataset files, credentials, or API keys in the public repository.
 
-## Data profile and source caveats
+## The problem
 
-The provided archive was extracted to `data/raw/sap-o2c-data/` for this working copy. Profiling found 19 tables and 21,393 JSONL records across the supplied files. The raw directory and generated SQLite database are ignored by Git so the source dataset is not accidentally published. `data/reports/profile.json` is generated locally and can be regenerated at any time.
+Order-to-cash information is spread across separate exports for orders, items, deliveries, billing, customers, products, and accounting. A person investigating a question such as “Which journal entry is linked to this billing document?” must identify the right files, understand their identifiers, reconcile item-number formatting, and follow document references across tables. A spreadsheet view obscures those connections, while a static FAQ cannot answer questions grounded in changing records.
 
-Numeric item identifiers can be represented in multiple forms (`10`, `000010`). For joins only, numeric fields whose names end in `Item` are canonicalized by stripping leading zeroes. Original payload values are unchanged. The report shows exact and item-normalized join coverage. Other identifiers are compared exactly. Similar-looking values alone are not treated as relationships.
+## What this project does
 
-Candidate join coverage is a profiling signal, not proof of business semantics. Billing preceding-document references are linked only when an existing delivery item or sales-order item matches under the item-number policy. Unmatched billing references are exposed by `/api/data-quality/report`. The supplied data includes cancellation rows and headers marked canceled; top-product billing-document counts exclude headers explicitly marked canceled.
+1. **Profiles and stages the source.** JSONL files are inventoried and profiled. Source values are retained as text, provenance is recorded, and malformed lines are captured as ingestion diagnostics.
+2. **Models verified links.** Canonical entities and relationships are built from explicit source references and auditable join rules. The graph is persisted in SQLite and projected into NetworkX for traversal.
+3. **Lets people explore.** The dashboard provides search, a Cytoscape relationship graph, focused document traces, node hover previews, click-to-pin properties, and neighbor expansion.
+4. **Answers natural-language questions.** An optional Gemini or Groq planner maps the request into a constrained, validated query plan. The backend runs supported operations against the data and produces a readable answer with retrieved evidence. It never executes SQL written by the model. With no provider configured, a deterministic planner supports known query patterns and reports that fallback in the response.
+
+Supported query families include document trace, customer order lookup, billing summaries, top products, and incomplete-flow checks. Ambiguous customer/product requests can ask for clarification. See the API section for endpoints and examples.
 
 ## Architecture
 
-```text
-JSONL parts -> profiler -> data/reports/profile.json
-           -> SQLite source_records + ingestion_errors
-                    |                 |
-                    |                 +-> FastAPI analytics / search / trace
-                    +-> NetworkX verified graph -> bounded graph API
-React + Cytoscape ---------------------------------------> FastAPI
+```mermaid
+flowchart LR
+  subgraph DataPrep[Data preparation]
+    D[JSONL files in private dataset repository] --> P[Profiler<br/>backend.profile]
+    D --> I[Ingest<br/>backend.ingest]
+    P --> R[Profile report<br/>generated artifact]
+    I --> S[(SQLite<br/>source tables + provenance)]
+    S --> V[Join and data-quality validation<br/>backend.validate]
+    S --> G[Canonical entity and relationship builder<br/>backend.build_graph]
+    G --> N[(SQLite graph tables)]
+  end
+  subgraph Deploy[Render deployment]
+    PR[Public app repository\nFastAPI + React source] --> B[Private Render Blueprint/build context]
+    D -. supplied securely to build .-> B
+    B --> API[Free web service\nFastAPI + NetworkX]
+    B --> UI[Static Site\nReact + Vite + Cytoscape]
+  end
+  S --> API
+  N --> API
+  UI <-->|HTTPS JSON API| API
+  U[User] --> UI
+  API --> Q[Constrained query planner\nGemini/Groq optional; deterministic fallback]
+  Q --> S
+  Q --> E[Validated plan + retrieved records]
+  E --> A[Grounded natural-language answer + evidence]
+  A --> UI
 ```
 
-SQLite is the source of truth. SQLAlchemy Core creates per-table relational source staging tables with text-preserved fields, provenance keys, and a JSON staging payload. Canonical graph entities and verified relationships are stored separately from source rows. NetworkX is rebuilt as a derived projection for traversal. Amounts remain source strings in staging and are parsed only for bounded analytics; ingestion does not silently rewrite source values.
+### Request and data flow
 
-## Local setup (Windows PowerShell)
+- **Source boundary:** The private dataset repository is the source for JSONL records. The public repository contains application code, dependency manifests, documentation, and deployment configuration only. `.gitignore` excludes raw/processed data, environment files, frontend dependencies, and generated artifacts.
+- **Build and initialization:** The private Render Blueprint/build context checks out the public application code and makes the private dataset available to the API build. The build installs dependencies, profiles the source, ingests it into SQLite, validates joins, and builds the graph. This keeps dataset files out of the public Git history while allowing the deployed service to initialize from the approved private source.
+- **Query path:** The browser sends a natural-language question to `POST /api/query`. The planner emits a constrained schema, the API validates and executes supported operations with parameterized/database-backed code, and the response includes an answer, query plan, warnings, and evidence. Graph evidence is returned so the dashboard can focus the graph on relevant records.
+- **Provider boundary:** `LLM_PROVIDER`, `LLM_API_KEY`, and `LLM_MODEL` are server-side settings. The model chooses a supported intent and filters; it does not provide executable SQL. Do not expose the key in a `VITE_` frontend variable.
+
+## Technology choices
+
+| Layer | Technology | Why it is used |
+| --- | --- | --- |
+| API | Python, FastAPI, Pydantic | Typed request/response contracts, validation, and interactive OpenAPI documentation. |
+| Data storage | SQLite, SQLAlchemy Core | Portable, lightweight relational staging and graph tables for this dataset-sized prototype. |
+| Graph processing | NetworkX | Build and traverse connected business records with explicit relationship rules. |
+| Data processing | Python JSONL tooling | Preserve source values and provenance while profiling and validating input. |
+| UI | React, TypeScript, Vite | Component-based interface with compile-time checks and a fast static build. |
+| Graph visualization | Cytoscape.js | Interactive graph layout, selection, highlighting, and focused traces. |
+| Optional language model | Gemini or Groq API | Natural-language intent planning and answer phrasing; constrained by backend validation. |
+| Hosting | Render Static Site + Web Service | Host the frontend and API separately on free-tier services. Free services may sleep when idle and cold-start on the next request. |
+
+## Public code and private data repositories
+
+- **Public:** [sap-order-to-cash-context-graph](https://github.com/Adnanjawed007/sap-order-to-cash-context-graph) contains the source code and this README. It can be reviewed by recruiters without exposing the supplied dataset.
+- **Private:** `sap-order-to-cash-private-data` holds the dataset and the deployment build context/Blueprint used for the private-data workflow. Render is authorized to access it; the public application repository does not include raw source records.
+- **Connection:** Render builds from the private repository context. Its build command clones the public application repository, installs/builds the app, and copies the private dataset into the API data directory before running the profile, ingestion, validation, and graph-building steps. The Static Site is built from the public frontend and points at the API URL. This lets the code remain reviewable while access to the data stays restricted.
+- **Operations:** Keep both repository names and the Render build commands aligned if either repository is renamed. Configure secrets in Render’s environment settings, never in Git. A deployment rebuild may need to repeat data initialization; free-service storage is not a durable database guarantee.
+
+## Live deployment
+
+- **Dashboard:** [https://sap-o2c-dashboard.onrender.com](https://sap-o2c-dashboard.onrender.com)
+- **API:** [https://sap-o2c-api.onrender.com](https://sap-o2c-api.onrender.com)
+- **Health check:** [https://sap-o2c-api.onrender.com/api/health](https://sap-o2c-api.onrender.com/api/health)
+- **API explorer:** [https://sap-o2c-api.onrender.com/docs](https://sap-o2c-api.onrender.com/docs)
+
+The dashboard is a Render Static Site and the API is a Python web service. Both were configured to use the Render free tier. Free services can spin down while idle, so the first request after inactivity may take longer. Verify current service state and plan in Render; hosting provider plans and limits can change. The live URLs above are the project URLs; availability depends on the Render services being active.
+
+## Run locally (Windows PowerShell)
+
+### Requirements
+
+- Python 3.10 or newer
+- Node.js and npm
+- Git
+- Authorized access to the private dataset repository (or the extracted dataset archive)
+
+### 1. Get the code and dataset
+
+```powershell
+git clone https://github.com/Adnanjawed007/sap-order-to-cash-context-graph.git
+cd sap-order-to-cash-context-graph
+```
+
+Obtain the dataset through its private repository or the supplied authorized archive. Extract/copy the JSONL files under `data\raw\sap-o2c-data\`. The raw data directory is ignored by Git.
+
+### 2. Create the API environment and build the local database/graph
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend\requirements.txt
 Copy-Item backend\.env.example backend\.env
+```
+
+Edit `backend\.env` if needed. Defaults point to `data/raw/sap-o2c-data`, a local SQLite database, and the Vite development origin. Then run the data pipeline in order:
+
+```powershell
 python -m backend.profile
 python -m backend.ingest
 python -m backend.validate
 python -m backend.build_graph
+```
+
+Start the API in this terminal:
+
+```powershell
 uvicorn backend.app:app --reload
 ```
 
-In a second PowerShell window:
+### 3. Start the dashboard
+
+In a second PowerShell terminal from the repository root:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-The dashboard runs at `http://localhost:5173`; the API and interactive OpenAPI docs run at `http://127.0.0.1:8000` and `/docs`. Set `FRONTEND_ORIGIN` for cross-origin requests, `DATA_DIR` for source data, and either `DATABASE_PATH` or a SQLite `DATABASE_URL` for the database.
+Open [http://localhost:5173](http://localhost:5173). The API runs at [http://127.0.0.1:8000](http://127.0.0.1:8000); the OpenAPI explorer is at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). Vite proxies `/api` calls to the local API.
 
-## API examples
+### Optional language-model configuration
 
-- `GET /api/health`
-- `GET /api/dataset/stats`
-- `GET /api/entities/search?q=740506`
-- `GET /api/entities/sales_order/740506`
-- `GET /api/graph?limit=150`
-- `GET /api/graph/stats`
-- `GET /api/graph/path?source_node_id=sales_order%3A740506&target_node_id=customer%3A310000108`
-- `GET /api/graph/expand/sales_order:740506`
-- `GET /api/documents/sales_order/740506/trace`
-- `GET /api/analytics/top-products?limit=20`
-- `GET /api/analytics/incomplete-flows`
-- `GET /api/data-quality/report`
-- `POST /api/query/validate` with a question JSON object
-- `POST /api/query` with `{"question":"Trace order 740506"}`
+The app works without an API key using its deterministic planner for supported request patterns. For LLM-backed intent planning and answer phrasing, set these values in the API environment (`backend/.env` locally, Render environment settings when deployed):
 
-Top products are ranked by distinct non-canceled billing documents. Quantity and net amount use Decimal parsing and stay grouped by currency; product units are not normalized. Incomplete flows mean an order has no referenced delivery item, or a delivery item has no matching non-canceled billing item.
+```dotenv
+LLM_PROVIDER=gemini
+LLM_API_KEY=your_server_side_key
+LLM_MODEL=your_available_model_name
+```
 
-### Verified example
+Use `groq` instead of `gemini` to select Groq. Choose a model currently available to your provider account. Never commit `.env` or paste a key into frontend configuration. Provider/API quotas and free allowances are controlled by the provider and can change.
 
-Running `POST /api/query` with `{"question":"Billing summary by month"}` on the supplied dataset returned two INR groups:
+## API quick reference
 
-| Billing month | Distinct documents | Quantity | Net amount |
-| --- | ---: | ---: | ---: |
-| 2025-04 | 76 | 118 | 28,711.58 |
-| 2025-05 | 7 | 12 | 2,117.75 |
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | Service health. |
+| `GET` | `/api/dataset/stats` | Source table and record counts. |
+| `GET` | `/api/entities/search?q=740506` | Find entities by identifier. |
+| `GET` | `/api/entities/sales_order/740506` | Retrieve an entity and source details. |
+| `GET` | `/api/graph?limit=150` | Bounded graph for visualization. |
+| `GET` | `/api/graph/stats` | Graph node/link counts. |
+| `GET` | `/api/graph/expand/sales_order:740506` | Expand a node’s neighborhood. |
+| `GET` | `/api/documents/sales_order/740506/trace` | Trace connected order-to-cash records. |
+| `GET` | `/api/analytics/top-products?limit=20` | Rank products from billing records. |
+| `GET` | `/api/analytics/incomplete-flows` | Find documented incomplete-flow cases. |
+| `GET` | `/api/data-quality/report` | Review data quality and unmatched references. |
+| `POST` | `/api/query/validate` | Produce/validate a query plan without running it. |
+| `POST` | `/api/query` | Run a supported natural-language investigation. |
 
-These are retrieved results from this dataset, not fixed application metrics. The response includes the validated plan, source tables, metric definition, execution status, and a warning when the deterministic planner is used because no LLM credentials are configured.
+Example request:
 
-The query API accepts document traces, top-product ranking, customer order lookup, billing summaries grouped by customer/product/month, and incomplete-flow analysis. Supported filters include customer/product identifiers and inclusive date ranges. Unresolved customer or product names produce a clarification response. It does not execute model-generated SQL. Without credentials, a deterministic planner handles supported phrasings and returns a warning. To enable model-based intent interpretation, configure `LLM_PROVIDER` (`groq` or `gemini`), `LLM_API_KEY`, and `LLM_MODEL`. Model availability is provider-account specific; the model name is not hardcoded. Provider failures and invalid plans fail closed.
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/query `
+  -ContentType 'application/json' `
+  -Body '{"question":"Trace order 740506"}'
+```
 
-## Verification
+The response contains a natural-language `answer`, `execution_status`, `result_count`, validated `plan`, `evidence`, referenced graph nodes, and any planner warnings. Search/trace the example order `740506` in the dashboard when the authorized dataset is loaded.
 
-Verified locally on the supplied dataset:
+## Data and modeling notes
 
-- `python -m backend.profile` — profiled all 19 logical tables, including join coverage and data-quality diagnostics.
-- `python -m backend.ingest` — ingested 21,393 records from all 19 logical tables into JSON staging and per-source relational tables.
-- `python -m backend.validate` — SQLite integrity passed; source and relational row counts matched; zero ingestion errors.
-- `python -m backend.build_graph` — persisted 1,458 canonical entities and 21,949 validated relationships.
-- `python -m pytest backend/tests -q` — 23 tests passed, including synthetic malformed-input and repeat-ingestion fixtures, identifier preservation, plan safety, injection resistance, verified joins, cancellation-aware analytics, and provider-plan validation.
-- `cd frontend; npm run build` — production build succeeded with Cytoscape code-split. `npm audit` found zero vulnerabilities.
+The supplied dataset profile previously reported 19 logical tables and 21,393 JSONL records. A graph build on that dataset produced 1,458 canonical entities and 21,949 relationships. These are dataset/build-specific figures, not guaranteed live service counts.
 
-Tests combine the real dataset with synthetic JSONL and ingestion fixtures. They do not cover every relationship edge case or live provider behavior.
+Source identifiers are preserved as strings. For joins only, numeric fields whose names end in `Item` are normalized by stripping leading zeroes, so `10` and `000010` can match without rewriting source values. Other identifiers match exactly. Candidate join coverage is a diagnostic signal, not proof of business semantics. Billing preceding-document references are connected only when they match an existing delivery item or sales-order item under the documented item-number rule. Unmatched billing references appear in the data-quality report. Cancellation-aware analytics exclude headers explicitly marked canceled.
 
-## Deployment status and limitations
+## Tests and verification
 
-`render.yaml` defines a Render API service with a persistent disk and a static frontend. The dataset must be securely uploaded to `/var/data/sap-o2c-data`, then profile, ingest, validation, and graph build commands must be run on the service; ephemeral application storage is not suitable for SQLite. No live deployment has been created or verified. Review the Render plan's persistent-disk availability and configure secrets through the host environment.
+Run the existing backend test suite from the repository root:
 
-For production initialization, create the Blueprint, securely place the authorized dataset files on the mounted disk, then use the API service shell to run `python -m backend.profile`, `python -m backend.ingest`, `python -m backend.validate`, and `python -m backend.build_graph` in that order. Restart the API after initialization so its in-memory graph cache is built from the initialized database. Verify `/api/health`, `/api/dataset/stats`, and `/api/graph/stats`. The static site is built from `frontend/` and points at the API service URL through `VITE_API_URL`.
+```powershell
+python -m pytest backend/tests -q
+```
 
-This remains an assessment prototype. Queries are bounded to the documented intents. The source table staging model and canonical graph tables are not a fully normalized domain ORM. Gemini/Groq adapters have not been verified with live credentials. Authentication, rate limiting, audit retention, full payment/invoice lifecycle semantics, and exhaustive security tests remain production work. Validate candidate keys and joins with data owners before operational use.
+Build-check the frontend:
+
+```powershell
+cd frontend
+npm ci
+npm run build
+```
+
+**Verification run for this README update:** `python -m pytest backend/tests -q` completed with **23 passed**. `cd frontend; npm run build` completed successfully. The backend tests cover API health and query behavior, ingestion and repeat-ingestion fixtures, identifier preservation, malformed input, verified joins, cancellation-aware analytics, constrained query plans, and injection resistance. Passing local checks do not prove live provider credentials, Render availability, or every possible SAP relationship edge case; rerun them for the exact revision you review.
+
+## Limitations and next steps
+
+This is an assessment/recruiter-facing prototype, not a production SAP integration. The query planner supports bounded documented intents rather than arbitrary SQL or unrestricted questions. LLM-provider behavior depends on server-side configuration and external provider availability. The dataset represents the supplied exports and does not establish every real-world order-to-cash business rule. Free hosting may sleep, and local SQLite or build-time data should not be treated as durable production storage. Before operational use, add an authenticated access model, durable managed database and backup plan, rate limits, audit/retention policies, broader domain validation, and owner-approved relationship semantics.
+
+## License and data handling
+
+No license is declared here. Request permission before reusing the supplied dataset. The public code repository intentionally does not grant access to the private dataset.
