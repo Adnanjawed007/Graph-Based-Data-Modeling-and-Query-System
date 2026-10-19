@@ -75,7 +75,7 @@ export default function App(){
   const trail=focusRoot?trailKinds.flatMap(kind=>{const byId=new Map<string,Node>();graph.nodes.filter(n=>n.type===kind).forEach(n=>byId.set(n.identifier,n));return Array.from(byId.values()).map(n=>({kind,id:n.identifier}))}):[];
 
   return <main>
-    <header><div><small>BUSINESS INVESTIGATION</small><h1>Order-to-Cash Context Graph</h1><p>Explore verified links across the supplied SAP records.</p></div><button onClick={load}>Refresh data</button></header>
+    <header><div><small>BUSINESS INVESTIGATION</small><h1>Graph-Based Data Modeling and Query System</h1><p>Explore verified links across the supplied SAP order-to-cash records.</p></div><button onClick={load}>Refresh data</button></header>
     {err&&<div className="error">{err}</div>}
     <section className="stats">{(stats?.tables||[]).map((t:any)=><div key={t.table_name}><b>{Number(t.records).toLocaleString()}</b><span>{String(t.table_name).replace(/_/g,' ')}</span></div>)}</section>
     <section className="searchbar"><form onSubmit={searchEntities}><input aria-label="Search entities" value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Find an order, customer, product, or document"/><button>Search</button></form><div className="search-results">{searchResults.map(n=><button type="button" key={n.id} onClick={()=>chooseEntity(n)}>{n.type} - {n.identifier}</button>)}</div></section>

@@ -1,8 +1,8 @@
-﻿# SAP Order-to-Cash Context Graph
+# Graph-Based Data Modeling and Query System
 
 **Explore SAP-style order-to-cash records as a connected graph, then ask grounded questions in plain language.** The application profiles source data, stages it in SQLite, constructs verified business relationships, and serves an interactive graph and conversational query interface.
 
-[Open the live dashboard](https://sap-o2c-dashboard.onrender.com) · [Public application repository](https://github.com/Adnanjawed007/sap-order-to-cash-context-graph) · [API health](https://sap-o2c-api.onrender.com/api/health) · [Interactive API docs](https://sap-o2c-api.onrender.com/docs)
+[Open the live dashboard](https://sap-o2c-dashboard.onrender.com) · [Public application repository](https://github.com/Adnanjawed007/Graph-Based-Data-Modeling-and-Query-System) · [API health](https://sap-o2c-api.onrender.com/api/health) · [Interactive API docs](https://sap-o2c-api.onrender.com/docs)
 
 > The public source repository intentionally excludes the business dataset. The dataset lives in a separate private GitHub repository and is supplied to the Render build/deployment workflow. Do not put dataset files, credentials, or API keys in the public repository.
 
@@ -71,7 +71,7 @@ flowchart LR
 
 ## Public code and private data repositories
 
-- **Public:** [sap-order-to-cash-context-graph](https://github.com/Adnanjawed007/sap-order-to-cash-context-graph) contains the source code and this README. It can be reviewed by recruiters without exposing the supplied dataset.
+- **Public:** [Graph-Based-Data-Modeling-and-Query-System](https://github.com/Adnanjawed007/Graph-Based-Data-Modeling-and-Query-System) contains the source code and this README. It can be reviewed by recruiters without exposing the supplied dataset.
 - **Private:** `sap-order-to-cash-private-data` holds the dataset and the deployment build context/Blueprint used for the private-data workflow. Render is authorized to access it; the public application repository does not include raw source records.
 - **Connection:** Render builds from the private repository context. Its build command clones the public application repository, installs/builds the app, and copies the private dataset into the API data directory before running the profile, ingestion, validation, and graph-building steps. The Static Site is built from the public frontend and points at the API URL. This lets the code remain reviewable while access to the data stays restricted.
 - **Operations:** Keep both repository names and the Render build commands aligned if either repository is renamed. Configure secrets in Render’s environment settings, never in Git. A deployment rebuild may need to repeat data initialization; free-service storage is not a durable database guarantee.
@@ -130,8 +130,8 @@ If the page reports that the API cannot be reached, open the [API health check](
 ### 1. Get the code and dataset
 
 ```powershell
-git clone https://github.com/Adnanjawed007/sap-order-to-cash-context-graph.git
-cd sap-order-to-cash-context-graph
+git clone https://github.com/Adnanjawed007/Graph-Based-Data-Modeling-and-Query-System.git
+cd Graph-Based-Data-Modeling-and-Query-System
 ```
 
 Obtain the dataset through its private repository or the supplied authorized archive. Extract/copy the JSONL files under `data\raw\sap-o2c-data\`. The raw data directory is ignored by Git.

@@ -15,7 +15,7 @@ from .schemas import (HealthResponse, QueryValidationResponse, QueryResponse, Da
 from .narration import narrate_answer
 import networkx as nx
 
-app=FastAPI(title='SAP Order-to-Cash Context Graph',version='0.1.0',description='Read-only investigation API over the supplied SAP-style JSONL records.')
+app=FastAPI(title='Graph-Based Data Modeling and Query System',version='0.1.0',description='Read-only investigation API over SAP-style order-to-cash JSONL records.')
 origins=[x.strip() for x in os.environ.get('FRONTEND_ORIGIN','http://localhost:5173').split(',') if x.strip()]
 app.add_middleware(CORSMiddleware,allow_origins=origins,allow_credentials=False,allow_methods=['GET','POST'],allow_headers=['*'])
 DOMAIN_RE=re.compile(r'\b(orders?|deliveries|delivery|billing|invoices?|customers?|products?|payments?|journals?|receivables?|sales|incomplete|unbilled)\b',re.I)
