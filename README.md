@@ -97,7 +97,18 @@ The full source dataset remains in the private repository. The small example bel
 | Billing document `INV-DEMO-3001` | currency `EUR` | bills the delivered item |
 | Journal entry `JE-DEMO-4001` | company code `DEMO` | records the accounting entry for the invoice |
 
-Example flow: `SO-DEMO-1001 -> order item 10 -> DN-DEMO-2001 -> INV-DEMO-3001 -> JE-DEMO-4001`. These invented IDs are for explaining the entity/relationship model only. For the live walkthrough, use the real sample order already available in the deployed dataset:
+Example flow: `SO-DEMO-1001 -> order item 10 -> DN-DEMO-2001 -> INV-DEMO-3001 -> JE-DEMO-4001`. These invented IDs are for explaining the entity/relationship model only. For live exploration, these order IDs are present in the deployed dataset. Only identifiers are listed here; source fields and customer details remain private:
+
+| Live order ID | Suggested question |
+| --- | --- |
+| `740506` | `Trace order 740506` |
+| `740507` | `Trace order 740507` |
+| `740508` | `Trace order 740508` |
+| `740556` | `Trace order 740556` |
+
+To compare orders, run the trace prompt for two different IDs and inspect how their connected nodes and returned evidence differ. The exact linked documents vary by order.
+
+For each live order:
 
 1. Open the [live dashboard](https://sap-o2c-dashboard.onrender.com). If it has been idle, allow time for the free API service to wake up.
 2. In the entity search field above the graph, enter **`740506`** and choose the matching sales order result. The graph focuses on that entity and its connected records.
