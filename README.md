@@ -85,6 +85,28 @@ flowchart LR
 
 The dashboard is a Render Static Site and the API is a Python web service. Both were configured to use the Render free tier. Free services can spin down while idle, so the first request after inactivity may take longer. Verify current service state and plan in Render; hosting provider plans and limits can change. The live URLs above are the project URLs; availability depends on the Render services being active.
 
+## Demo data and live dashboard walkthrough
+
+The full source dataset remains in the private repository. The small example below is **synthetic documentation data** showing the shape of the graph; it is not a row copied from the private SAP dataset and is not loaded into the live service.
+
+| Demo record | Example fields | Example relationship |
+| --- | --- | --- |
+| Sales order `SO-DEMO-1001` | created `2025-03-10`, customer `C-DEMO-21`, currency `EUR` | contains item `10` |
+| Order item `SO-DEMO-1001:10` | product `MAT-DEMO-7`, quantity `2` | requests product `MAT-DEMO-7` |
+| Delivery `DN-DEMO-2001` | ship-to `C-DEMO-21` | fulfills the order item |
+| Billing document `INV-DEMO-3001` | currency `EUR` | bills the delivered item |
+| Journal entry `JE-DEMO-4001` | company code `DEMO` | records the accounting entry for the invoice |
+
+Example flow: `SO-DEMO-1001 -> order item 10 -> DN-DEMO-2001 -> INV-DEMO-3001 -> JE-DEMO-4001`. These invented IDs are for explaining the entity/relationship model only. For the live walkthrough, use the real sample order already available in the deployed dataset:
+
+1. Open the [live dashboard](https://sap-o2c-dashboard.onrender.com). If it has been idle, allow time for the free API service to wake up.
+2. In the entity search field above the graph, enter **`740506`** and choose the matching sales order result. The graph focuses on that entity and its connected records.
+3. Hover over a node to preview its properties. Click a node to pin its properties in the **Selected entity** panel; use **Expand neighbors** to load more linked records.
+4. In the chat panel, try **`Trace order 740506`**. The assistant should return a plain-language summary, a result count, and expandable query plan/source evidence; the graph should highlight the records used for the answer.
+5. Try **`Billing summary by month`** to see a data-backed aggregate. If LLM credentials are not configured, the app uses its deterministic supported-query planner and marks that in a warning. The demo IDs above are not expected to return results in the live dashboard.
+
+If the page reports that the API cannot be reached, open the [API health check](https://sap-o2c-api.onrender.com/api/health) and confirm the Render services are running. A cold start can take a while. If the health check fails persistently, the host may need a manual redeploy or the private dataset initialization may need to be rerun.
+
 ## Run locally (Windows PowerShell)
 
 ### Requirements
